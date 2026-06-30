@@ -223,7 +223,7 @@
       <div class="voice-question" id="voiceQuestion">マイクを押して開始してください</div>
       <div class="voice-answer" id="voiceAnswer"></div>
       <button class="mic-btn" id="micBtn">🎤</button>
-      <div class="hint">話し終わったら「次」と言ってください。答えずに「次」と言うとスキップします。</div>
+      <div class="hint">話し終わったら「次」と言ってください。マイク🎤を長押しして停止することもできます。</div>
       <div class="progress-list" id="progressList"></div>
     </div>
     <div style="text-align:right;margin-top:10px;">
@@ -435,11 +435,34 @@ function renderFieldsList(){
 }
 
 document.getElementById('addFieldBtn').onclick = ()=>{
-  const label = prompt('新しい項目名を入力してください(例: 保管場所)');
-  if(!label) return;
-  const key = 'f_' + Date.now();
-  editingFields.push({ field_key:key, field_label:label, display_order: editingFields.length+1 });
-  renderFieldsList();
+  // モーダルで項目名入力
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999;';
+  div.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:20px;max-width:400px;width:90%;">
+      <h3 style="margin-top:0;color:var(--blue);">新しい項目を追加</h3>
+      <input type="text" placeholder="項目名を入力(例: 保管場所)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-bottom:14px;">
+      <div style="text-align:right;gap:8px;display:flex;justify-content:flex-end;">
+        <button class="ghost" id="cancelFieldAdd" style="margin:0;padding:8px 14px;">キャンセル</button>
+        <button id="confirmFieldAdd" style="margin:0;padding:8px 14px;">追加</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(div);
+  const input = div.querySelector('input');
+  input.focus();
+  
+  const cleanup = ()=> div.remove();
+  div.querySelector('#cancelFieldAdd').onclick = cleanup;
+  div.querySelector('#confirmFieldAdd').onclick = ()=>{
+    const label = input.value.trim();
+    if(!label){ alert('項目名を入力してください'); return; }
+    const key = 'f_' + Date.now();
+    editingFields.push({ field_key:key, field_label:label, display_order: editingFields.length+1 });
+    renderFieldsList();
+    cleanup();
+  };
+  input.onkeypress = (e)=>{ if(e.key==='Enter') div.querySelector('#confirmFieldAdd').click(); };
 };
 
 document.getElementById('fieldsSaveBtn').onclick = async ()=>{
@@ -477,6 +500,11 @@ let voiceIndex = 0;
 let voiceAnswers = {};
 let currentBuffer = '';
 let listening = false;
+let recognitionTimeout = null;
+let speechStarted = false;
+let micPressTimer = null;
+let recognitionTimeout = null;
+let speechStarted = false;
 
 const FILLERS = ['えーと','えーっと','えっと','あのー','あの','まあ','なんか','そのー','うーんと','うーん'];
 
@@ -505,8 +533,9 @@ function setupRecognition(){
   }
   const r = new SR();
   r.lang = 'ja-JP';
-  r.continuous = true;
+  r.continuous = false;
   r.interimResults = true;
+  r.maxAlternatives = 1;
   return r;
 }
 
@@ -560,17 +589,32 @@ function startListening(){
   recognition = setupRecognition();
   if(!recognition) return;
   listening = true;
+  speechStarted = false;
   micBtn.classList.add('listening');
 
+  // 5秒の無音タイムアウト
+  recognitionTimeout = setTimeout(()=>{
+    if(listening && !speechStarted){
+      voiceAnswer.textContent = '（音が検出されません）';
+    }
+  }, 5000);
+
+  recognition.onstart = ()=>{
+    console.log('認識開始');
+  };
+
   recognition.onresult = (event)=>{
+    clearTimeout(recognitionTimeout);
     let interim = '';
     let finalText = '';
     for(let i=event.resultIndex; i<event.results.length; i++){
       const transcript = event.results[i][0].transcript;
       if(event.results[i].isFinal){
         finalText += transcript;
+        speechStarted = true;
       } else {
         interim += transcript;
+        if(interim.trim()) speechStarted = true;
       }
     }
     if(finalText){
@@ -581,21 +625,33 @@ function startListening(){
   };
 
   recognition.onerror = (e)=>{
-    console.error(e);
-  };
-
-  recognition.onend = ()=>{
-    if(listening){
-      // ユーザーが止めない限り再開(継続的に聞き続ける)
-      try{ recognition.start(); }catch(e){}
+    console.error('音声認識エラー:', e.error);
+    clearTimeout(recognitionTimeout);
+    if(e.error === 'no-speech'){
+      voiceAnswer.textContent = '（音が検出されませんでした。もう一度お試しください）';
+    } else if(e.error === 'audio-capture'){
+      voiceAnswer.textContent = '（マイクをご確認ください）';
+    } else {
+      voiceAnswer.textContent = '（エラーが発生しました）';
     }
   };
 
-  try{ recognition.start(); }catch(e){}
+  recognition.onend = ()=>{
+    clearTimeout(recognitionTimeout);
+    listening = false;
+    micBtn.classList.remove('listening');
+  };
+
+  try{ 
+    recognition.start(); 
+  }catch(e){
+    console.error(e);
+  }
 }
 
 function stopListening(){
   listening = false;
+  clearTimeout(recognitionTimeout);
   if(recognition){
     recognition.onend = null;
     recognition.stop();
@@ -613,9 +669,12 @@ async function checkForNext(text){
     stopListening();
     voiceIndex++;
     renderProgress();
-    await askCurrentQuestion();
+    // 0.5秒待ってから次の質問へ
+    setTimeout(()=> askCurrentQuestion(), 500);
   }
 }
+
+let micPressTimer = null;
 
 micBtn.onclick = async ()=>{
   if(listening){
@@ -628,6 +687,22 @@ micBtn.onclick = async ()=>{
     startListening();
   }
 };
+
+// 長押し検出（タッチデバイス対応）
+micBtn.addEventListener('touchstart', (e)=>{
+  e.preventDefault();
+  micPressTimer = setTimeout(()=>{
+    if(listening){
+      stopListening();
+      toast('音声入力を停止しました');
+    }
+  }, 1000);
+});
+
+micBtn.addEventListener('touchend', (e)=>{
+  e.preventDefault();
+  clearTimeout(micPressTimer);
+});
 
 async function finishVoiceInput(){
   stopListening();
