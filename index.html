@@ -188,18 +188,75 @@
     z-index:100;
   }
   .toast.show{opacity:1;}
+  .login-screen{
+    position:fixed;inset:0;
+    background:linear-gradient(135deg, var(--blue), #1a3a6b);
+    display:flex;align-items:center;justify-content:center;
+    z-index:999;
+  }
+  .login-box{
+    background:#fff;
+    border-radius:12px;
+    padding:40px 30px;
+    width:90%;
+    max-width:380px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.2);
+    text-align:center;
+  }
+  .login-box h1{
+    color:var(--blue);
+    margin:0 0 8px;
+    font-size:24px;
+  }
+  .login-box p{
+    color:var(--gray);
+    margin:0 0 24px;
+    font-size:14px;
+  }
+  .login-box input{
+    width:100%;
+    padding:12px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    font-size:16px;
+    margin-bottom:12px;
+  }
+  .login-box button{
+    width:100%;
+    padding:12px;
+    background:var(--blue);
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    font-size:16px;
+    cursor:pointer;
+    font-weight:bold;
+  }
+  .login-box button:hover{
+    background:#1a3a6b;
+  }
 </style>
 </head>
 <body>
 
-<header>
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h1>🔧 車部品 在庫管理</h1>
+    <p>パスワードを入力してください</p>
+    <input type="password" id="passwordInput" placeholder="パスワード" />
+    <button id="loginBtn">ログイン</button>
+  </div>
+</div>
+
+<header id="mainHeader" style="display:none;">
   <h1>🔧 車部品 在庫管理</h1>
   <div class="btns">
     <button class="secondary" id="openFieldsBtn">項目管理</button>
+    <button class="secondary" id="logoutBtn">ログアウト</button>
   </div>
 </header>
 
-<main>
+<main id="mainContent" style="display:none;">
   <div class="toolbar">
     <input type="text" id="searchInput" placeholder="品名・品番などで検索">
     <button id="voiceAddBtn">🎤 音声で追加</button>
@@ -260,6 +317,60 @@
 <div class="toast" id="toast"></div>
 
 <script>
+/* ===== 認証設定 ===== */
+const FIXED_PASSWORD = 'password123';  // ← パスワードをここで変更してください
+
+function isLoggedIn(){
+  return sessionStorage.getItem('loggedIn') === 'true';
+}
+
+function login(pwd){
+  if(pwd === FIXED_PASSWORD){
+    sessionStorage.setItem('loggedIn', 'true');
+    return true;
+  }
+  return false;
+}
+
+function logout(){
+  sessionStorage.removeItem('loggedIn');
+  location.reload();
+}
+
+function checkLogin(){
+  if(isLoggedIn()){
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainHeader').style.display = 'flex';
+    document.getElementById('mainContent').style.display = 'block';
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('mainHeader').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'none';
+  }
+}
+
+// ログインボタン
+document.getElementById('loginBtn').onclick = ()=>{
+  const pwd = document.getElementById('passwordInput').value;
+  if(login(pwd)){
+    checkLogin();
+  } else {
+    alert('パスワードが正しくありません');
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordInput').focus();
+  }
+};
+
+// パスワード入力でEnterキーでログイン
+document.getElementById('passwordInput').onkeypress = (e)=>{
+  if(e.key === 'Enter'){
+    document.getElementById('loginBtn').click();
+  }
+};
+
+// ログアウトボタン
+document.getElementById('logoutBtn').onclick = logout;
+
 /* ===== Supabase 接続設定 ===== */
 const SUPABASE_URL = "https://bmtwwossholktnzvuslc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_BXFLQoMjCyaOBLwm4Yo3Eg_0c1Zr9H1";
