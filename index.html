@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>車部品 在庫管理</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --blue:#2F5496;
+    --blue-light:#EAF0FA;
+    --bg:#F7F8FA;
+    --text:#222;
+    --gray:#888;
+    --border:#E2E5EA;
+    --danger:#D64545;
+    --success:#2E9E5B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  header{
+    background:var(--blue);
+    color:#fff;
+    padding:16px 20px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  header h1{font-size:18px;margin:0;}
+  header .btns button{
+    margin-left:8px;
+  }
+  main{
+    max-width:900px;
+    margin:0 auto;
+    padding:16px;
+  }
+  .toolbar{
+    display:flex;
+    gap:8px;
+    margin-bottom:16px;
+    flex-wrap:wrap;
+  }
+  input[type=text], select{
+    padding:8px 10px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    font-size:14px;
+  }
+  button{
+    padding:8px 14px;
+    border:none;
+    border-radius:6px;
+    background:var(--blue);
+    color:#fff;
+    font-size:14px;
+    cursor:pointer;
+  }
+  button.secondary{
+    background:#fff;
+    color:var(--blue);
+    border:1px solid var(--blue);
+  }
+  button.danger{
+    background:var(--danger);
+  }
+  button.ghost{
+    background:transparent;
+    color:var(--gray);
+    border:1px solid var(--border);
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    background:#fff;
+    border-radius:8px;
+    overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);
+  }
+  th,td{
+    padding:10px 12px;
+    text-align:left;
+    border-bottom:1px solid var(--border);
+    font-size:13px;
+  }
+  th{
+    background:var(--blue-light);
+    color:var(--blue);
+    white-space:nowrap;
+  }
+  tr:last-child td{border-bottom:none;}
+  .row-actions button{
+    padding:4px 8px;
+    font-size:12px;
+    margin-right:4px;
+  }
+  .modal-overlay{
+    position:fixed;inset:0;
+    background:rgba(0,0,0,0.4);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:50;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:#fff;
+    border-radius:10px;
+    width:90%;
+    max-width:480px;
+    max-height:85vh;
+    overflow-y:auto;
+    padding:20px;
+  }
+  .modal h2{margin-top:0;font-size:16px;color:var(--blue);}
+  .field-row{
+    display:flex;
+    gap:8px;
+    margin-bottom:8px;
+    align-items:center;
+  }
+  .field-row input{flex:1;}
+  .voice-status{
+    text-align:center;
+    padding:24px 10px;
+  }
+  .voice-question{
+    font-size:18px;
+    font-weight:bold;
+    color:var(--blue);
+    margin-bottom:6px;
+  }
+  .voice-answer{
+    font-size:15px;
+    color:var(--text);
+    min-height:24px;
+    margin-bottom:14px;
+    background:var(--blue-light);
+    border-radius:6px;
+    padding:10px;
+  }
+  .mic-btn{
+    width:72px;height:72px;
+    border-radius:50%;
+    background:var(--blue);
+    color:#fff;
+    font-size:28px;
+    border:none;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 10px;
+  }
+  .mic-btn.listening{
+    background:var(--danger);
+    animation:pulse 1.2s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(214,69,69,0.5);}
+    70%{box-shadow:0 0 0 14px rgba(214,69,69,0);}
+    100%{box-shadow:0 0 0 0 rgba(214,69,69,0);}
+  }
+  .progress-list{
+    text-align:left;
+    font-size:12px;
+    color:var(--gray);
+    margin-top:14px;
+    line-height:1.8;
+  }
+  .progress-list .done{color:var(--success);}
+  .progress-list .current{color:var(--blue);font-weight:bold;}
+  .hint{font-size:12px;color:var(--gray);margin-top:4px;}
+  .empty{padding:40px;text-align:center;color:var(--gray);}
+  .toast{
+    position:fixed;
+    bottom:20px;left:50%;
+    transform:translateX(-50%);
+    background:#333;color:#fff;
+    padding:10px 18px;
+    border-radius:6px;
+    font-size:13px;
+    opacity:0;
+    transition:opacity .3s;
+    z-index:100;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔧 車部品 在庫管理</h1>
+  <div class="btns">
+    <button class="secondary" id="openFieldsBtn">項目管理</button>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <input type="text" id="searchInput" placeholder="品名・品番などで検索">
+    <button id="voiceAddBtn">🎤 音声で追加</button>
+    <button class="secondary" id="manualAddBtn">＋ 手入力で追加</button>
+  </div>
+
+  <div id="tableWrap">
+    <table id="itemsTable">
+      <thead><tr id="tableHead"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyMsg" class="empty" style="display:none;">まだ部品が登録されていません</div>
+  </div>
+</main>
+
+<!-- 音声入力モーダル -->
+<div class="modal-overlay" id="voiceModal">
+  <div class="modal">
+    <h2>音声で部品を登録</h2>
+    <div class="voice-status">
+      <div class="voice-question" id="voiceQuestion">マイクを押して開始してください</div>
+      <div class="voice-answer" id="voiceAnswer"></div>
+      <button class="mic-btn" id="micBtn">🎤</button>
+      <div class="hint">話し終わったら「次」と言ってください。答えずに「次」と言うとスキップします。</div>
+      <div class="progress-list" id="progressList"></div>
+    </div>
+    <div style="text-align:right;margin-top:10px;">
+      <button class="ghost" id="voiceCancelBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 手入力 / 編集モーダル -->
+<div class="modal-overlay" id="manualModal">
+  <div class="modal">
+    <h2 id="manualTitle">部品を追加</h2>
+    <div id="manualFields"></div>
+    <div style="text-align:right;margin-top:14px;">
+      <button class="ghost" id="manualCancelBtn">キャンセル</button>
+      <button id="manualSaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 項目管理モーダル -->
+<div class="modal-overlay" id="fieldsModal">
+  <div class="modal">
+    <h2>項目の管理</h2>
+    <div id="fieldsList"></div>
+    <button class="secondary" id="addFieldBtn" style="width:100%;margin-top:10px;">＋ 項目を追加</button>
+    <div style="text-align:right;margin-top:14px;">
+      <button class="ghost" id="fieldsCancelBtn">閉じる</button>
+      <button id="fieldsSaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== Supabase 接続設定 ===== */
+const SUPABASE_URL = "https://bmtwwossholktnzvuslc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_BXFLQoMjCyaOBLwm4Yo3Eg_0c1Zr9H1";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ===== グローバル状態 ===== */
+let fields = [];        // fields_config の中身
+let items = [];         // items_master の中身
+let editingItemId = null;
+
+const toastEl = document.getElementById('toast');
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  setTimeout(()=>toastEl.classList.remove('show'), 2200);
+}
+
+/* ===== 初期読み込み ===== */
+async function loadFields(){
+  const { data, error } = await sb.from('fields_config').select('*').order('display_order', { ascending:true });
+  if(error){ console.error(error); toast('項目の取得に失敗しました'); return; }
+  fields = data;
+}
+
+async function loadItems(){
+  const { data, error } = await sb.from('items_master').select('*').order('created_at', { ascending:false });
+  if(error){ console.error(error); toast('在庫の取得に失敗しました'); return; }
+  items = data;
+}
+
+async function refreshAll(){
+  await loadFields();
+  await loadItems();
+  renderTable();
+}
+
+/* ===== 一覧表示 ===== */
+function renderTable(filter=""){
+  const head = document.getElementById('tableHead');
+  const body = document.getElementById('tableBody');
+  head.innerHTML = '';
+  body.innerHTML = '';
+
+  fields.forEach(f=>{
+    const th = document.createElement('th');
+    th.textContent = f.field_label;
+    head.appendChild(th);
+  });
+  const thActions = document.createElement('th');
+  thActions.textContent = '操作';
+  head.appendChild(thActions);
+
+  const filtered = items.filter(it=>{
+    if(!filter) return true;
+    const d = it.data || {};
+    return Object.values(d).some(v => String(v||'').toLowerCase().includes(filter.toLowerCase()));
+  });
+
+  document.getElementById('emptyMsg').style.display = filtered.length ? 'none' : 'block';
+  document.getElementById('itemsTable').style.display = filtered.length ? 'table' : 'none';
+
+  filtered.forEach(it=>{
+    const tr = document.createElement('tr');
+    fields.forEach(f=>{
+      const td = document.createElement('td');
+      td.textContent = (it.data && it.data[f.field_key]) || '';
+      tr.appendChild(td);
+    });
+    const tdAct = document.createElement('td');
+    tdAct.className = 'row-actions';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'secondary';
+    editBtn.textContent = '修正';
+    editBtn.onclick = ()=> openManualModal(it);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'danger';
+    delBtn.textContent = '削除';
+    delBtn.onclick = ()=> deleteItem(it.id);
+    tdAct.appendChild(editBtn);
+    tdAct.appendChild(delBtn);
+    tr.appendChild(tdAct);
+    body.appendChild(tr);
+  });
+}
+
+document.getElementById('searchInput').addEventListener('input', e=>{
+  renderTable(e.target.value);
+});
+
+async function deleteItem(id){
+  if(!confirm('この部品を削除しますか？')) return;
+  const { error } = await sb.from('items_master').delete().eq('id', id);
+  if(error){ toast('削除に失敗しました'); return; }
+  toast('削除しました');
+  await refreshAll();
+}
+
+/* ===== 手入力 / 編集モーダル ===== */
+const manualModal = document.getElementById('manualModal');
+function openManualModal(item=null){
+  editingItemId = item ? item.id : null;
+  document.getElementById('manualTitle').textContent = item ? '部品を修正' : '部品を追加';
+  const wrap = document.getElementById('manualFields');
+  wrap.innerHTML = '';
+  fields.forEach(f=>{
+    const label = document.createElement('label');
+    label.style.display='block';
+    label.style.fontSize='12px';
+    label.style.color='var(--gray)';
+    label.style.marginTop='8px';
+    label.textContent = f.field_label;
+    const input = document.createElement('input');
+    input.type='text';
+    input.style.width='100%';
+    input.dataset.key = f.field_key;
+    input.value = item && item.data ? (item.data[f.field_key]||'') : '';
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+  });
+  manualModal.classList.add('show');
+}
+document.getElementById('manualAddBtn').onclick = ()=> openManualModal(null);
+document.getElementById('manualCancelBtn').onclick = ()=> manualModal.classList.remove('show');
+
+document.getElementById('manualSaveBtn').onclick = async ()=>{
+  const inputs = document.querySelectorAll('#manualFields input');
+  const dataObj = {};
+  inputs.forEach(inp => dataObj[inp.dataset.key] = inp.value.trim());
+
+  if(editingItemId){
+    const { error } = await sb.from('items_master').update({ data: dataObj }).eq('id', editingItemId);
+    if(error){ toast('更新に失敗しました'); return; }
+    toast('更新しました');
+  } else {
+    const { error } = await sb.from('items_master').insert({ data: dataObj });
+    if(error){ toast('登録に失敗しました'); return; }
+    toast('登録しました');
+  }
+  manualModal.classList.remove('show');
+  await refreshAll();
+};
+
+/* ===== 項目管理モーダル ===== */
+const fieldsModal = document.getElementById('fieldsModal');
+let editingFields = [];
+
+function openFieldsModal(){
+  editingFields = fields.map(f=>({...f}));
+  renderFieldsList();
+  fieldsModal.classList.add('show');
+}
+document.getElementById('openFieldsBtn').onclick = openFieldsModal;
+document.getElementById('fieldsCancelBtn').onclick = ()=> fieldsModal.classList.remove('show');
+
+function renderFieldsList(){
+  const wrap = document.getElementById('fieldsList');
+  wrap.innerHTML = '';
+  editingFields.forEach((f, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    const input = document.createElement('input');
+    input.type='text';
+    input.value = f.field_label;
+    input.oninput = e=> f.field_label = e.target.value;
+    const del = document.createElement('button');
+    del.className='danger';
+    del.textContent='削除';
+    del.onclick = ()=>{ editingFields.splice(idx,1); renderFieldsList(); };
+    row.appendChild(input);
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
+}
+
+document.getElementById('addFieldBtn').onclick = ()=>{
+  const label = prompt('新しい項目名を入力してください(例: 保管場所)');
+  if(!label) return;
+  const key = 'f_' + Date.now();
+  editingFields.push({ field_key:key, field_label:label, display_order: editingFields.length+1 });
+  renderFieldsList();
+};
+
+document.getElementById('fieldsSaveBtn').onclick = async ()=>{
+  // 削除された項目を反映
+  const currentKeys = editingFields.map(f=>f.field_key);
+  const removed = fields.filter(f=> !currentKeys.includes(f.field_key));
+  for(const r of removed){
+    await sb.from('fields_config').delete().eq('id', r.id);
+  }
+  // 既存更新 / 新規追加
+  for(let i=0;i<editingFields.length;i++){
+    const f = editingFields[i];
+    f.display_order = i+1;
+    if(f.id){
+      await sb.from('fields_config').update({ field_label:f.field_label, display_order:f.display_order }).eq('id', f.id);
+    } else {
+      await sb.from('fields_config').insert({ field_key:f.field_key, field_label:f.field_label, display_order:f.display_order });
+    }
+  }
+  toast('項目を更新しました');
+  fieldsModal.classList.remove('show');
+  await refreshAll();
+};
+
+/* ===== 音声入力 ===== */
+const voiceModal = document.getElementById('voiceModal');
+const micBtn = document.getElementById('micBtn');
+const voiceQuestion = document.getElementById('voiceQuestion');
+const voiceAnswer = document.getElementById('voiceAnswer');
+const progressList = document.getElementById('progressList');
+
+let recognition = null;
+let synth = window.speechSynthesis;
+let voiceIndex = 0;
+let voiceAnswers = {};
+let currentBuffer = '';
+let listening = false;
+
+const FILLERS = ['えーと','えーっと','えっと','あのー','あの','まあ','なんか','そのー','うーんと','うーん'];
+
+function cleanFiller(text){
+  let t = text;
+  FILLERS.forEach(f=>{
+    t = t.split(f).join('');
+  });
+  return t.trim();
+}
+
+function speak(text){
+  return new Promise(resolve=>{
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'ja-JP';
+    utter.onend = resolve;
+    synth.speak(utter);
+  });
+}
+
+function setupRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    toast('お使いのブラウザは音声認識に対応していません(Chrome推奨)');
+    return null;
+  }
+  const r = new SR();
+  r.lang = 'ja-JP';
+  r.continuous = true;
+  r.interimResults = true;
+  return r;
+}
+
+document.getElementById('voiceAddBtn').onclick = async ()=>{
+  if(!fields.length){
+    toast('先に項目を設定してください');
+    return;
+  }
+  voiceIndex = 0;
+  voiceAnswers = {};
+  currentBuffer = '';
+  voiceAnswer.textContent = '';
+  renderProgress();
+  voiceModal.classList.add('show');
+  voiceQuestion.textContent = 'マイクを押して開始してください';
+};
+
+document.getElementById('voiceCancelBtn').onclick = ()=>{
+  stopListening();
+  voiceModal.classList.remove('show');
+};
+
+function renderProgress(){
+  progressList.innerHTML = '';
+  fields.forEach((f, i)=>{
+    const div = document.createElement('div');
+    let cls = '';
+    if(i < voiceIndex) cls = 'done';
+    if(i === voiceIndex) cls = 'current';
+    div.className = cls;
+    const val = voiceAnswers[f.field_key];
+    div.textContent = `${f.field_label}: ${val !== undefined ? (val || '(空欄)') : ''}`;
+    progressList.appendChild(div);
+  });
+}
+
+async function askCurrentQuestion(){
+  if(voiceIndex >= fields.length){
+    await finishVoiceInput();
+    return;
+  }
+  const f = fields[voiceIndex];
+  voiceQuestion.textContent = `${f.field_label}は？`;
+  voiceAnswer.textContent = '';
+  currentBuffer = '';
+  await speak(`${f.field_label}は？`);
+  startListening();
+}
+
+function startListening(){
+  recognition = setupRecognition();
+  if(!recognition) return;
+  listening = true;
+  micBtn.classList.add('listening');
+
+  recognition.onresult = (event)=>{
+    let interim = '';
+    let finalText = '';
+    for(let i=event.resultIndex; i<event.results.length; i++){
+      const transcript = event.results[i][0].transcript;
+      if(event.results[i].isFinal){
+        finalText += transcript;
+      } else {
+        interim += transcript;
+      }
+    }
+    if(finalText){
+      currentBuffer += finalText;
+      checkForNext(currentBuffer);
+    }
+    voiceAnswer.textContent = cleanFiller(currentBuffer + interim);
+  };
+
+  recognition.onerror = (e)=>{
+    console.error(e);
+  };
+
+  recognition.onend = ()=>{
+    if(listening){
+      // ユーザーが止めない限り再開(継続的に聞き続ける)
+      try{ recognition.start(); }catch(e){}
+    }
+  };
+
+  try{ recognition.start(); }catch(e){}
+}
+
+function stopListening(){
+  listening = false;
+  if(recognition){
+    recognition.onend = null;
+    recognition.stop();
+  }
+  micBtn.classList.remove('listening');
+}
+
+async function checkForNext(text){
+  // 「次」という発話を検出したら確定
+  if(text.includes('次')){
+    const answerPart = text.split('次')[0];
+    const cleaned = cleanFiller(answerPart);
+    const f = fields[voiceIndex];
+    voiceAnswers[f.field_key] = cleaned;
+    stopListening();
+    voiceIndex++;
+    renderProgress();
+    await askCurrentQuestion();
+  }
+}
+
+micBtn.onclick = async ()=>{
+  if(listening){
+    stopListening();
+    return;
+  }
+  if(voiceIndex === 0 && Object.keys(voiceAnswers).length === 0 && voiceQuestion.textContent === 'マイクを押して開始してください'){
+    await askCurrentQuestion();
+  } else {
+    startListening();
+  }
+};
+
+async function finishVoiceInput(){
+  stopListening();
+  voiceQuestion.textContent = '登録しています...';
+  await speak('以上です');
+  const { error } = await sb.from('items_master').insert({ data: voiceAnswers });
+  if(error){
+    toast('登録に失敗しました');
+    console.error(error);
+  } else {
+    toast('音声入力で登録しました');
+  }
+  voiceModal.classList.remove('show');
+  await refreshAll();
+}
+
+/* ===== 初期化 ===== */
+refreshAll();
+</script>
+</body>
+</html>
