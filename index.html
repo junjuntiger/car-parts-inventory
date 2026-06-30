@@ -280,11 +280,12 @@
       <div class="voice-question" id="voiceQuestion">マイクを押して開始してください</div>
       <div class="voice-answer" id="voiceAnswer"></div>
       <button class="mic-btn" id="micBtn">🎤</button>
-      <div class="hint">話し終わったら「次」と言ってください。マイク🎤を長押しして停止することもできます。</div>
+      <div class="hint">「次」と言うと次の項目へ。途中でも「ここで保存」で保存できます。</div>
       <div class="progress-list" id="progressList"></div>
     </div>
     <div style="text-align:right;margin-top:10px;">
       <button class="ghost" id="voiceCancelBtn">閉じる</button>
+      <button id="voiceSaveBtn">ここで保存</button>
     </div>
   </div>
 </div>
@@ -665,6 +666,19 @@ document.getElementById('voiceAddBtn').onclick = async ()=>{
 document.getElementById('voiceCancelBtn').onclick = ()=>{
   stopListening();
   voiceModal.classList.remove('show');
+};
+
+document.getElementById('voiceSaveBtn').onclick = async ()=>{
+  // 現在入力中のバッファも保存対象にする
+  if(currentBuffer.trim() && voiceIndex < fields.length){
+    const f = fields[voiceIndex];
+    voiceAnswers[f.field_key] = cleanFiller(currentBuffer);
+  }
+  if(Object.keys(voiceAnswers).length === 0){
+    toast('まだ何も入力されていません');
+    return;
+  }
+  await finishVoiceInput();
 };
 
 function renderProgress(){
