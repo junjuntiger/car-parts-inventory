@@ -769,16 +769,16 @@ function stopListening(){
 }
 
 async function checkForNext(text){
-  // 「次」という発話を検出したら確定
-  if(text.includes('次')){
-    const answerPart = text.split('次')[0];
+  const NEXT_WORDS = ['次', 'つぎ', 'ツギ', 'next', 'NEXT'];
+  const found = NEXT_WORDS.find(w => text.includes(w));
+  if(found){
+    const answerPart = text.split(found)[0];
     const cleaned = cleanFiller(answerPart);
     const f = fields[voiceIndex];
     voiceAnswers[f.field_key] = cleaned;
     stopListening();
     voiceIndex++;
     renderProgress();
-    // 0.5秒待ってから次の質問へ
     setTimeout(()=> askCurrentQuestion(), 500);
   }
 }
